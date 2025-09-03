@@ -27,6 +27,76 @@ AVAILABLE_STEMS = {
 }
 
 
+def convert_mono_to_stereo(input_file_path: str) -> str:
+    """
+    Detects if an audio file is mono and converts it to stereo if necessary.
+    
+    Args:
+        input_file_path: Path to the input audio file
+        
+    Returns:
+        Path to the processed file (original if already stereo, converted if was mono)
+        
+    Raises:
+        Exception: If there's an error during conversion
+    """
+    try:
+        logger.info(f"🔍 Checking audio channels for: {input_file_path}")
+        
+        # Load audio file to check channels
+        audio = AudioSegment.from_file(input_file_path)
+        
+        # Check if mono (1 channel) or stereo (2 channels)
+        if audio.channels == 1:
+            logger.info("📡 Mono file detected - converting to stereo...")
+            
+            # Create temporary file for the converted audio
+            temp_dir = Path(tempfile.gettempdir())
+            unique_id = str(uuid.uuid4())[:8]
+            converted_path = temp_dir / f"stereo_converted_{unique_id}.wav"
+            
+            # Convert mono to stereo by duplicating the channel
+            stereo_audio = audio.set_channels(2)
+            
+            # Export as WAV to maintain quality
+            stereo_audio.export(
+                str(converted_path), 
+                format="wav",
+                parameters=["-ar", "44100"]  # Ensure 44.1kHz sample rate
+            )
+            
+            logger.info(f"✅ Mono to stereo conversion completed: {converted_path}")
+            return str(converted_path)
+            
+        elif audio.channels == 2:
+            logger.info("✅ File is already stereo - no conversion needed")
+            return input_file_path
+            
+        else:
+            logger.warning(f"⚠️ Unexpected channel count: {audio.channels}")
+            # For multi-channel audio, convert to stereo
+            logger.info("🔄 Multi-channel audio detected - converting to stereo...")
+            
+            temp_dir = Path(tempfile.gettempdir())
+            unique_id = str(uuid.uuid4())[:8]
+            converted_path = temp_dir / f"stereo_converted_{unique_id}.wav"
+            
+            # Convert to stereo
+            stereo_audio = audio.set_channels(2)
+            stereo_audio.export(
+                str(converted_path), 
+                format="wav",
+                parameters=["-ar", "44100"]
+            )
+            
+            logger.info(f"✅ Multi-channel to stereo conversion completed: {converted_path}")
+            return str(converted_path)
+            
+    except Exception as e:
+        logger.error(f"❌ Error during mono/stereo conversion: {str(e)}")
+        raise Exception(f"Error converting audio channels: {str(e)}")
+
+
 class AudioSeparator:
     def __init__(self, output_dir: str = "static/output", model_name: str = DEFAULT_MODEL):
         self.output_dir = Path(output_dir)
@@ -77,10 +147,15 @@ class AudioSeparator:
             ValueError: If the input file is invalid or stems are invalid
             Exception: For other errors during processing
         """
+        converted_file_path = None
         try:
             # Validate input
             if not os.path.exists(input_file_path):
                 raise ValueError(f"File not found: {input_file_path}")
+            
+            # Convert mono to stereo if necessary
+            converted_file_path = convert_mono_to_stereo(input_file_path)
+            processing_file_path = converted_file_path
             
             # If not specified, use only vocals by default
             if selected_stems is None:
@@ -102,7 +177,7 @@ class AudioSeparator:
                 
                 logger.info("Loading audio file...")
                 # Load the audio
-                audio_file = AudioFile(input_file_path)
+                audio_file = AudioFile(processing_file_path)
                 wav_data = audio_file.read()
                 
                 # Apply model for separation
@@ -197,6 +272,14 @@ class AudioSeparator:
         except Exception as e:
             logger.error(f"Error during separation: {str(e)}")
             raise Exception(f"Error during audio separation: {str(e)}")
+        finally:
+            # Clean up converted file if it was created
+            if converted_file_path and converted_file_path != input_file_path:
+                try:
+                    os.unlink(converted_file_path)
+                    logger.info(f"Cleaned up converted file: {converted_file_path}")
+                except OSError as e:
+                    logger.warning(f"Error removing converted file: {e}")
 
     def _normalize_tensor_format(self, sources):
         """

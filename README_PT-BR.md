@@ -136,6 +136,27 @@ docker cp voice-separator:/app/static/output ./meus-arquivos/
 
 **Tamanho máximo:** Sem limite de tamanho de arquivo (uso local)
 
+### 🎧 Suporte a Canais de Áudio
+
+A aplicação agora suporta **arquivos WAV mono** com conversão automática para estéreo:
+
+- **Arquivos mono (1 canal):** Convertidos automaticamente para estéreo duplicando o canal
+- **Arquivos estéreo (2 canais):** Processados diretamente sem conversão
+- **Arquivos multi-canal:** Convertidos para estéreo para compatibilidade
+
+**Como funciona:**
+1. O sistema detecta o número de canais de áudio no seu arquivo
+2. Se mono for detectado, converte automaticamente para estéreo
+3. A conversão mantém a qualidade e taxa de amostragem
+4. O processamento continua normalmente com o arquivo estéreo
+5. Arquivos temporários de conversão são limpos automaticamente
+
+**Benefícios:**
+- Não é necessário converter arquivos mono manualmente
+- Processamento transparente de vários formatos de áudio
+- Mantém a qualidade original do áudio
+- Funciona com todos os formatos de áudio suportados
+
 ## 🔧 Solução de problemas
 
 ### "Erro ao carregar modelo"

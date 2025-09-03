@@ -144,6 +144,27 @@ You can now choose between different AI models for separation:
 📏 **Limit:** No file size limit (local use)
 ⏱️ **YouTube:** Maximum 10 minutes
 
+### 🎧 Audio Channel Support
+
+The application now supports **mono WAV files** with automatic conversion to stereo:
+
+- **Mono files (1 channel):** Automatically converted to stereo by duplicating the channel
+- **Stereo files (2 channels):** Processed directly without conversion
+- **Multi-channel files:** Converted to stereo for compatibility
+
+**How it works:**
+1. The system detects the number of audio channels in your file
+2. If mono is detected, it automatically converts to stereo
+3. The conversion maintains audio quality and sample rate
+4. Processing continues normally with the stereo file
+5. Temporary conversion files are cleaned up automatically
+
+**Benefits:**
+- No need to manually convert mono files
+- Seamless processing of various audio formats
+- Maintains original audio quality
+- Works with all supported audio formats
+
 ## 🛠️ Technical details
 
 This application uses **Demucs**, an AI model developed by Facebook/Meta AI specifically for music source separation. It's based on deep neural networks trained on thousands of songs.
@@ -250,6 +271,15 @@ python main.py
 ### API documentation
 - Interactive docs: `http://localhost:7860/docs`
 - Alternative docs: `http://localhost:7860/redoc`
+
+### Running tests
+```bash
+# Run mono/stereo conversion tests
+python test_mono_stereo_conversion.py
+
+# Run all tests with verbose output
+python -m pytest test_mono_stereo_conversion.py -v
+```
 
 ## 📝 Usage notes
 
