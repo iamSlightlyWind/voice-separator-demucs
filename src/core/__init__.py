@@ -8,9 +8,11 @@ Este módulo contém as classes e funções principais para:
 """
 
 from .separator import (
-    AudioSeparator, 
+    AudioSeparator,
+    DEFAULT_MODEL,
+    SUPPORTED_MODELS,
     get_audio_separator,
-    separate_audio, 
+    separate_audio,
     separate_vocals,
     AVAILABLE_STEMS
 )
@@ -21,8 +23,10 @@ from .youtube_downloader import (
 
 __all__ = [
     'AudioSeparator',
+    'DEFAULT_MODEL',
+    'SUPPORTED_MODELS',
     'get_audio_separator',
-    'separate_audio', 
+    'separate_audio',
     'separate_vocals',
     'AVAILABLE_STEMS',
     'YouTubeDownloader',

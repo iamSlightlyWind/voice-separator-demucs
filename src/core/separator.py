@@ -1,9 +1,9 @@
+import logging
 import os
+import tempfile
 import uuid
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
-import tempfile
-import logging
+from typing import Dict, List, Tuple
 
 from demucs import pretrained
 from demucs.apply import apply_model
@@ -14,8 +14,29 @@ from pydub import AudioSegment
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Use only the basic working model
-DEFAULT_MODEL = 'mdx_extra_q'
+DEFAULT_MODEL = "mdx_extra_q"
+SUPPORTED_MODELS = {
+    "mdx_extra_q": {
+        "label": "Demucs CPU Lite",
+        "requires_gpu": False,
+        "description": "Fastest option and the default model.",
+    },
+    "mdx": {
+        "label": "Demucs v3",
+        "requires_gpu": False,
+        "description": "Balanced quality and speed.",
+    },
+    "htdemucs": {
+        "label": "Demucs v4",
+        "requires_gpu": True,
+        "description": "Higher quality, GPU required.",
+    },
+    "htdemucs_ft": {
+        "label": "Demucs HD",
+        "requires_gpu": True,
+        "description": "Highest quality, GPU required.",
+    },
+}
 # Define available stems and their configurations
 AVAILABLE_STEMS = {
     'drums': {'index': 0, 'name': 'Drums', 'icon': '🥁'},
@@ -60,7 +81,8 @@ class AudioSeparator:
     def separate_stems(
         self, 
         input_file_path: str, 
-        selected_stems: List[str] = None
+        selected_stems: List[str] = None,
+        output_dir: str | Path | None = None,
     ) -> Dict[str, str]:
         """
         Separates audio into selected stems using the Demucs model.
@@ -90,6 +112,9 @@ class AudioSeparator:
             if invalid_stems:
                 raise ValueError(f"Invalid stems: {invalid_stems}. Available: {list(AVAILABLE_STEMS.keys())}")
             
+            target_output_dir = Path(output_dir) if output_dir is not None else self.output_dir
+            target_output_dir.mkdir(parents=True, exist_ok=True)
+
             # Generate unique ID for output files
             unique_id = str(uuid.uuid4())[:8]
             
@@ -187,7 +212,7 @@ class AudioSeparator:
                     )
                     
                     # Convert to MP3
-                    mp3_path = self.output_dir / filename
+                    mp3_path = target_output_dir / filename
                     audio_segment.export(
                         str(mp3_path), 
                         format="mp3", 
@@ -196,7 +221,7 @@ class AudioSeparator:
                     )
                     
                     # Add to result
-                    result_paths[stem] = f"static/output/{filename}"
+                    result_paths[stem] = str(mp3_path)
                     logger.info(f"✅ Stem {stem} processed: {filename}")
                 
                 logger.info("✅ Separation completed successfully!")
@@ -300,6 +325,26 @@ class AudioSeparator:
         """Returns information about available stems."""
         return AVAILABLE_STEMS
 
+    @staticmethod
+    def get_available_models() -> list[dict[str, str | bool | None]]:
+        """Returns metadata for all supported models."""
+        gpu_available = torch.cuda.is_available()
+        models: list[dict[str, str | bool | None]] = []
+        for name, details in SUPPORTED_MODELS.items():
+            requires_gpu = bool(details["requires_gpu"])
+            available = gpu_available or not requires_gpu
+            models.append(
+                {
+                    "name": name,
+                    "label": str(details["label"]),
+                    "description": str(details["description"]),
+                    "requires_gpu": requires_gpu,
+                    "available": available,
+                    "reason": None if available else "GPU required",
+                }
+            )
+        return models
+
     def estimate_processing_time(self, selected_stems: List[str]) -> str:
         """
         Estimates processing time based on selected stems and current model.
@@ -352,10 +397,20 @@ class AudioSeparator:
             torch.cuda.synchronize()
 
 
-# Global separator instance (singleton)
+_SEPARATOR_CACHE: dict[str, AudioSeparator] = {}
+
+
 def get_audio_separator(model_name=DEFAULT_MODEL):
     """Returns an instance of AudioSeparator for the given model."""
-    return AudioSeparator(model_name=model_name)
+    if model_name not in SUPPORTED_MODELS:
+        raise ValueError(
+            f"Invalid model: {model_name}. Supported models: {list(SUPPORTED_MODELS.keys())}"
+        )
+    separator = _SEPARATOR_CACHE.get(model_name)
+    if separator is None:
+        separator = AudioSeparator(model_name=model_name)
+        _SEPARATOR_CACHE[model_name] = separator
+    return separator
 
 # Compatibility - removed global instance to avoid initialization during import
 
