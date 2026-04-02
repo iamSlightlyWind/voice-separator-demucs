@@ -9,6 +9,7 @@ diffq
 pydub
 jinja2
 yt-dlp
+audioop-lts
 
 # Note: pydub and yt-dlp require ffmpeg installed on the system
 # Ubuntu/Debian: sudo apt-get install ffmpeg

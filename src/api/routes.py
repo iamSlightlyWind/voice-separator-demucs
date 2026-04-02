@@ -51,7 +51,7 @@ ALLOWED_EXTENSIONS = {".mp3", ".wav", ".flac", ".m4a", ".aac"}
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     """Main application page"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/api/stems")

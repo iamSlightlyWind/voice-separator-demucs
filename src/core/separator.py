@@ -10,7 +10,6 @@ from demucs.apply import apply_model
 from demucs.audio import AudioFile
 import torch
 from pydub import AudioSegment
-import torchaudio
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -101,14 +100,21 @@ class AudioSeparator:
                 temp_path = Path(temp_dir)
                 
                 logger.info("Loading audio file...")
-                # Load the audio
+                # Load the audio and match model configuration
                 audio_file = AudioFile(input_file_path)
-                wav_data = audio_file.read()
+                wav_data = audio_file.read(
+                    streams=0,
+                    samplerate=self.model.samplerate,
+                    channels=self.model.audio_channels
+                )
                 
                 # Apply model for separation
                 logger.info("Starting audio separation...")
                 
-                # Ensure wav_data is on the correct device
+                # Ensure wav_data has batch dimension and is on correct device
+                if wav_data.dim() == 2:
+                    wav_data = wav_data.unsqueeze(0)
+                
                 if wav_data.device != torch.device(self.device):
                     wav_data = wav_data.to(self.device)
                 
@@ -123,7 +129,6 @@ class AudioSeparator:
                         wav_data, 
                         device=self.device, 
                         progress=True,
-                        segment=10,
                         overlap=0.25
                     )
                 
@@ -162,19 +167,27 @@ class AudioSeparator:
                         audio_data = sources[stem_index]
                         filename = f"{stem}_{unique_id}.mp3"
                     
-                    # Move to CPU and ensure correct format
+                    # Export directly to MP3 using pydub to avoid torchaudio backend issues
                     audio_data = audio_data.cpu()
                     if audio_data.dtype == torch.float16:
                         audio_data = audio_data.float()
                     
-                    # Save temporary WAV file
-                    wav_path = temp_path / f"{stem}_{unique_id}.wav"
                     sample_rate = getattr(self.model, 'samplerate', 44100)
-                    torchaudio.save(str(wav_path), audio_data, sample_rate=sample_rate)
+                    
+                    # Convert torch tensor to pydub AudioSegment
+                    # Ensure audio_data is (channels, samples), flattened for pydub (samples * channels)
+                    # pydub expects bytes, so we convert to int16 first
+                    audio_data_int16 = (audio_data.clamp(-1, 1) * 32767).short().T.numpy()
+                    
+                    audio_segment = AudioSegment(
+                        audio_data_int16.tobytes(), 
+                        frame_rate=sample_rate,
+                        sample_width=2, 
+                        channels=audio_data.shape[0]
+                    )
                     
                     # Convert to MP3
                     mp3_path = self.output_dir / filename
-                    audio_segment = AudioSegment.from_wav(str(wav_path))
                     audio_segment.export(
                         str(mp3_path), 
                         format="mp3", 
@@ -269,7 +282,6 @@ class AudioSeparator:
                 wav_data, 
                 device=self.device, 
                 progress=True,
-                segment=15,  # Larger segments for vocals
                 overlap=0.1   # Less overlap for speed
             )
         
