@@ -8,7 +8,7 @@ from pathlib import Path
 
 import torch
 from fastapi import BackgroundTasks
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from src.core import AudioSeparator, DEFAULT_MODEL, SUPPORTED_MODELS, get_audio_separator
@@ -67,10 +67,13 @@ async def models() -> dict[str, object]:
 
 @app.post("/separate")
 async def separate_audio(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    model: str = DEFAULT_MODEL,
+    model: str | None = Form(default=None),
 ) -> FileResponse:
+    model = (model or request.query_params.get("model") or DEFAULT_MODEL).strip()
+
     if model not in SUPPORTED_MODELS:
         raise HTTPException(
             status_code=400,
@@ -78,6 +81,7 @@ async def separate_audio(
         )
 
     _validate_upload(file)
+    logger.info("Received separation request with model '%s'", model)
 
     input_suffix = Path(file.filename or "input.wav").suffix or ".wav"
     stem_name = Path(file.filename or "audio").stem or "audio"

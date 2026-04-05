@@ -1,8 +1,10 @@
+import gc
 import logging
 import os
 import tempfile
 import uuid
 from pathlib import Path
+from threading import Lock
 from typing import Dict, List, Tuple
 
 from demucs import pretrained
@@ -98,6 +100,9 @@ class AudioSeparator:
             ValueError: If the input file is invalid or stems are invalid
             Exception: For other errors during processing
         """
+        wav_data = None
+        sources = None
+
         try:
             # Validate input
             if not os.path.exists(input_file_path):
@@ -235,6 +240,12 @@ class AudioSeparator:
         except Exception as e:
             logger.error(f"Error during separation: {str(e)}")
             raise Exception(f"Error during audio separation: {str(e)}")
+        finally:
+            if sources is not None:
+                del sources
+            if wav_data is not None:
+                del wav_data
+            self._cleanup_gpu_memory()
 
     def _normalize_tensor_format(self, sources):
         """
@@ -396,21 +407,45 @@ class AudioSeparator:
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
 
+    def unload(self):
+        """Releases model resources so another model can be loaded safely."""
+        if hasattr(self, "model"):
+            del self.model
+        gc.collect()
+        self._cleanup_gpu_memory()
 
-_SEPARATOR_CACHE: dict[str, AudioSeparator] = {}
+
+_SEPARATOR_LOCK = Lock()
+_ACTIVE_SEPARATOR: AudioSeparator | None = None
+_ACTIVE_MODEL_NAME: str | None = None
 
 
 def get_audio_separator(model_name=DEFAULT_MODEL):
     """Returns an instance of AudioSeparator for the given model."""
+    global _ACTIVE_MODEL_NAME, _ACTIVE_SEPARATOR
+
     if model_name not in SUPPORTED_MODELS:
         raise ValueError(
             f"Invalid model: {model_name}. Supported models: {list(SUPPORTED_MODELS.keys())}"
         )
-    separator = _SEPARATOR_CACHE.get(model_name)
-    if separator is None:
-        separator = AudioSeparator(model_name=model_name)
-        _SEPARATOR_CACHE[model_name] = separator
-    return separator
+
+    with _SEPARATOR_LOCK:
+        if _ACTIVE_SEPARATOR is not None and _ACTIVE_MODEL_NAME == model_name:
+            return _ACTIVE_SEPARATOR
+
+        if _ACTIVE_SEPARATOR is not None:
+            logger.info(
+                "🔄 Switching separator model from '%s' to '%s'",
+                _ACTIVE_MODEL_NAME,
+                model_name,
+            )
+            _ACTIVE_SEPARATOR.unload()
+            _ACTIVE_SEPARATOR = None
+            _ACTIVE_MODEL_NAME = None
+
+        _ACTIVE_SEPARATOR = AudioSeparator(model_name=model_name)
+        _ACTIVE_MODEL_NAME = model_name
+        return _ACTIVE_SEPARATOR
 
 # Compatibility - removed global instance to avoid initialization during import
 
